@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
+from math import sqrt
 
 
 class DecisionTree:
-    def __init__(self, max_depth: int = 5, min_samples: int = 10):
+    def __init__(self, max_depth: int = 5, min_samples: int = 10, random_subspace: bool = True):
         self.max_depth = max_depth
         self.min_samples = min_samples
         self.tree = None
+        self.is_part_of_random_forest = random_subspace
 
     def fit(self, X: pd.DataFrame, y: np.ndarray):
         self.tree = self._build_tree(X, y, list(X.columns), set(), depth=0)
@@ -31,12 +33,17 @@ class DecisionTree:
         n = len(y_left) + len(y_right)
         return (len(y_left) / n) * self._gini(y_left) + (len(y_right) / n) * self._gini(y_right)
 
+    def _sample_random_features(self, features: list[str]) -> list[str]:
+        return np.random.choice(a=features, size=int(sqrt(len(features))), replace=False)
+
     def _best_split(self, X, y, feature_names, used_features):
         best_impurity = self._gini(y)
         best_feature = None
         best_threshold = None
 
-        for feature in feature_names:
+        features = self._sample_random_features(feature_names) if self.is_part_of_random_forest else feature_names
+
+        for feature in features:
             if not pd.api.types.is_numeric_dtype(X[feature]):
                 if feature in used_features:
                     continue
