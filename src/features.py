@@ -69,7 +69,6 @@ class TitanicPreprocessor(BaseEstimator, TransformerMixin):
         Uses statistics learned during fit() — never recomputes anything from X.
 
         Transformations applied in order:
-            - Encode Sex as binary (male=1, female=0)
             - Create Has_Cabin binary feature
             - Extract Title from Name
             - Fill missing Embarked with mode learned in fit
@@ -80,7 +79,6 @@ class TitanicPreprocessor(BaseEstimator, TransformerMixin):
                 4. Overall mean age
             - Create FamilySize (SibSp + Parch + 1)
             - Create IsSingle binary feature from FamilySize
-            - Encode Embarked (C=0, Q=1, S=2)
             - Drop unused columns: Name, Ticket, PassengerId, Cabin
 
         Args:
