@@ -91,11 +91,8 @@ class TitanicPreprocessor(BaseEstimator, TransformerMixin):
         """
         X = X.copy()
 
-        X["Sex"]= X["Sex"].map({"male": 1, "female": 0})
-
         # create a binary col Has_Cabin since this fact increases a chances of survival
         X["Has_Cabin"] = X["Cabin"].notna().astype(int)
-
 
         X['Title'] = X["Name"].str.extract(r",\s*([A-Za-z]+)\.", expand=False)
         X["Embarked"] = X["Embarked"].fillna(self._mode_embarked)
@@ -120,8 +117,7 @@ class TitanicPreprocessor(BaseEstimator, TransformerMixin):
 
         X["FamilySize"] = X["Parch"] + X["SibSp"] + 1
         X["IsSingle"] = (X["FamilySize"] == 1).astype(int)
-        X["Embarked"] = X["Embarked"].map({"C": 0, "Q": 1, "S": 2})
 
-        X.drop(["Name", "Ticket", "PassengerId", "Cabin"], inplace=True)
-
+        X = X.drop(columns=["Name", "Ticket", "PassengerId", "Cabin"])
+        
         return X
