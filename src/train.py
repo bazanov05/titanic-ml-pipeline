@@ -5,9 +5,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score, train_test_split
 from xgboost import XGBClassifier
 from src.pipeline import build_pipeline
-from sklearn.model_selection import train_test_split
 
 
 PATH_TO_CSV_FILE = "data/raw/Titanic-Dataset.csv"
@@ -48,46 +48,37 @@ def get_models() -> dict:
 def train_and_evaluate(
         models: dict,
         X_train: pd.DataFrame,
-        X_val: pd.DataFrame,
         y_train: pd.Series,
-        y_val: pd.Series
 ) -> Pipeline:
-    best_score = 0.0
+    best_accuracy = 0.0
     best_pipeline = None
 
     for name, model in models.items():
         pipeline = build_pipeline(model=model)  # build pipeline for this exact model
-        # train data only on train data to prevent data leakage
-        # fit -> transform -> scale -> train: all in this fit()
-        pipeline.fit(X=X_train, y=y_train)
+        
+        # use cross validation to get more accurate results
+        # divide data into 5 folds and have 5 iterations
+        # so every fold can be a validating set
+        scores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring="accuracy")
+        print(f"{name}: {scores.mean():.4f} ± {scores.std():.4f}")
 
-        # get score for train and val data
-        train_score = pipeline.score(X=X_train, y=y_train)
-        val_score = pipeline.score(X=X_val, y=y_val)
-
-        if val_score > best_score:
-            best_score = val_score
+        if scores.mean() > best_accuracy:
+            best_accuracy = scores.mean()
             best_pipeline = pipeline
-
-        print(f"Model: {name}\ttrain score: {train_score}\tvalidation score:{val_score}")
-
+            
     return best_pipeline
 
 
 if __name__ == "__main__":
     X, y = load_data(path=PATH_TO_CSV_FILE)
-
-    # 80% of data goes to train, 20% of data goes to validate
-    X_train, X_val, y_train, y_val = train_test_split(X, y ,test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
     models = get_models()
+    best_pipeline = train_and_evaluate(models=models, X_train=X_train, y_train=y_train)
 
-    best_pipeline = train_and_evaluate(
-        models=models,
-        X_train=X_train,
-        X_val=X_val,
-        y_train=y_train,
-        y_val=y_val
-    )
+    # refit best model on full training data, then evaluate once on unseen test set
+    best_pipeline.fit(X_train, y_train)
+    final_score = best_pipeline.score(X_val, y_val)
+    print(f"Final score: {final_score:.4f}")
 
     save_model(model=best_pipeline, filepath=PATH_TO_BEST_MODEL)
