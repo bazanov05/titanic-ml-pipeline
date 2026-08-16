@@ -5,8 +5,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import cross_val_score, train_test_split, GridSearchCV
 from xgboost import XGBClassifier
+
 from src.pipeline import build_pipeline
 from src.evaluate import plot_confusion_matrix, plot_roc_curves
 
@@ -50,7 +51,19 @@ def train_and_evaluate(
         models: dict,
         X_train: pd.DataFrame,
         y_train: pd.Series,
-) -> Pipeline:
+) -> tuple[Pipeline, float] :
+    """
+    Evaluates multiple baseline models using 5-fold cross-validation 
+    with ROC-AUC scoring, and returns the best-performing pipeline.
+
+    Args:
+        models: Dictionary mapping model names to instantiated sklearn classifiers.
+        X_train: Training features DataFrame.
+        y_train: Training target labels Series.
+
+    Returns:
+        tuple[Pipeline, float]: Best-performing sklearn Pipeline and its mean CV AUC score.
+    """
     best_auc = 0.0
     best_pipeline = None
 
@@ -68,20 +81,74 @@ def train_and_evaluate(
             best_auc = auc_scores.mean()
             best_pipeline = pipeline
             
-    return best_pipeline
+    return best_pipeline, best_auc
+
+
+def find_best_xgboost_pipeline(xgboost: XGBClassifier, X_train: pd.DataFrame, y_train: pd.Series) -> tuple[Pipeline, float]:
+    """
+    Performs grid search with 5-fold cross-validation over XGBoost hyperparameters
+    using ROC-AUC scoring, and returns the best-fitted pipeline.
+
+    Args:
+        xgboost: Instantiated XGBClassifier to be tuned.
+        X_train: Training features DataFrame.
+        y_train: Training target labels Series.
+
+    Returns:
+        tuple[Pipeline, float]: Best-fitted sklearn Pipeline refitted on the entire 
+            training set, and its CV AUC score from GridSearchCV.
+    """
+    # we have 3*3*3 = 27 possible combinations
+    # we need a prefix so GridSearchCV knows at which steps apply the parameters
+    parameters = {
+        "classifier__n_estimators": [100, 300, 500],
+        "classifier__max_depth": [3, 4, 5],
+        "classifier__learning_rate": [0.01, 0.05, 0.1]
+    }
+
+    pipeline = build_pipeline(model=xgboost)
+
+    grid_cv = GridSearchCV(
+        estimator=pipeline,
+        param_grid=parameters,
+        scoring="roc_auc",
+        cv=5,       # 5 folds, 4 for training, 1 for validating
+        n_jobs=-1   # use all available CPU cores to train models in parallel
+    )
+
+    # train all possible 27 models and return the best one
+    grid_cv.fit(X=X_train, y=y_train)
+
+    print(f"Best params: {grid_cv.best_params_}")
+    print(f"Best AUC: {grid_cv.best_score_:.4f}")
+
+    return grid_cv.best_estimator_, grid_cv.best_score_
 
 
 if __name__ == "__main__":
     X, y = load_data(path=PATH_TO_CSV_FILE)
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    best_pipeline = None
+    best_auc = 0.0
 
     models = get_models()
-    best_pipeline = train_and_evaluate(models=models, X_train=X_train, y_train=y_train)
+    best_default, default_auc = train_and_evaluate(models=models, X_train=X_train, y_train=y_train)
+    best_xgboost, xgboost_auc = find_best_xgboost_pipeline(xgboost=XGBClassifier(), X_train=X_train, y_train=y_train)
 
-    # refit best model on full training data, then evaluate once on unseen test set
-    best_pipeline.fit(X_train, y_train)
-    final_score = best_pipeline.score(X_val, y_val)
-    print(f"Final score: {final_score:.4f}")
+    if xgboost_auc > default_auc:
+        best_pipeline = best_xgboost
+        best_auc = xgboost_auc
+        print("XGBoost classifier won!")
+    else:
+        best_pipeline = best_default
+        best_auc = default_auc
+        print(f"{best_pipeline.named_steps['classifier'].__class__.__name__} won!")
+
+    print(f"Best AUC: {best_auc}")
+    print(f"Final score: {best_pipeline.score(X=X_val, y=y_val)}")
+
+    # add finetuned xgboost classifier to our models to have it on plot as well
+    models["Tuned XGBoost"] = best_xgboost.named_steps["classifier"]
 
     plot_roc_curves(models=models, X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
     plot_confusion_matrix(best_pipeline=best_pipeline, X_val=X_val, y_val=y_val)
