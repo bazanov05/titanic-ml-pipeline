@@ -53,6 +53,7 @@ def plot_roc_curves(
     plt.title("ROC Curve")
     plt.legend()
     plt.savefig("outputs/roc_curve.png")
+    plt.close()
 
 
 def plot_confusion_matrix(best_pipeline: Pipeline, X_val: pd.DataFrame, y_val: pd.Series) -> None:
@@ -69,6 +70,7 @@ def plot_confusion_matrix(best_pipeline: Pipeline, X_val: pd.DataFrame, y_val: p
     Returns:
         None
     """
+    plt.figure()
     y_pred = best_pipeline.predict(X=X_val)
 
     cm = confusion_matrix(y_val, y_pred)
